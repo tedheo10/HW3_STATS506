@@ -1,0 +1,291 @@
+---
+title: "Problem Set 3"
+author: "Taeyoung Heo (UMID # 2914 5801)"
+format: 
+  html: 
+    embed-resources: true
+---
+
+GitHub repository link : <a href="https://github.com/tedheo10/HW3_STATS506">https://github.com/tedheo10/HW3_STATS506</a>
+
+```{r}
+```
+
+## Probmlem 1 - Vision
+
+<b>P1-a.</b> Merge the two files, VIX_D and DEMO_D
+
+```{r}
+library(foreign) # a package to import ".XPT" file
+
+demo <- read.xport("DEMO_D.XPT") # DEMO_D file import
+vix <- read.xport("VIX_D.XPT") # VIX_D file import
+
+merge_data <- merge(demo, vix, by = "SEQN", all = FALSE) # merge data 
+n <-nrow(merge_data) # the number of data
+print(n)
+```
+
+<b>P1-b.</b> The proportion table of respondents who wear glasses/contact lenses for distance vision
+
+```{r}
+library(stargazer) # a package to generate HTML/LaTeX tables
+
+# Empty matrix only with a columen of age ranges 
+mat_glasses <- matrix(nrow = 10, ncol = 3)
+colnames(mat_glasses) <- c("AgeRange", "Count", "Proportion")
+mat_glasses[,1] <- c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70-79", "over 80", "Total")
+
+# Populate the count of people who wear glasses/contact lenses for distance vision 
+for (i in 1:10) { 
+  if(i<10) { 
+    mat_glasses[i,2] <- sum(merge_data$VIQ220 == 1 &
+        merge_data$RIDAGEYR < 10*i & merge_data$RIDAGEYR >= 10*(i-1), na.rm = TRUE)
+    }
+  else if(i==10) {
+    mat_glasses[i,2] <- sum(merge_data$VIQ220 == 1, na.rm = TRUE)
+  }
+}
+
+# Populate the proportion of people in each age group 
+for (i in 1:10) { 
+    each_group <- as.numeric(mat_glasses[i,2])
+    total_group <- as.numeric(mat_glasses[10,2])
+    mat_glasses[i,3] <- each_group / total_group
+}
+
+# Change the mat_glasses as a data.frame with numeric values 
+df_glasses <- as.data.frame(mat_glasses)
+df_glasses[,2] <- as.numeric(df_glasses[,2])
+df_glasses[,3] <- as.numeric(df_glasses[,3])
+
+#  Table by ussing stargazer
+table_glasses <- stargazer(df_glasses, type = "text", summary = FALSE,
+  rownames = TRUE, title = "Glasses and Contact lenses Usage for Distance Vision")
+```
+
+<b>P1-c.</b> Fit three logistic regression models predicting whether a respondent wears glasses/contact lenses for distance vision 
+<br>&nbsp;&nbsp;&nbsp;1. the 1st logistic regression with age as a predictor
+
+```{r}
+merge_data$VIQ220_BI <- merge_data$VIQ220 == 1 # Binomial data for VIQ220
+glm1 <- glm(VIQ220_BI ~ RIDAGEYR, data = merge_data, family = binomial) 
+odd_1 <- exp(coef(glm1)) # the oods ratios 
+num1 <- nobs(glm1) # sample size
+pseudo_r1 <- 1 - (glm1$deviance / glm1$null.deviance) # pseudo-R^2
+aic1 <- AIC(glm1) # AIC value
+```
+
+2. the 2nd logistic regression with age, race and gender as predictors
+
+```{r}
+glm2 <- glm(VIQ220_BI ~ RIDAGEYR+RIDRETH1+RIAGENDR, data=merge_data, family = binomial)
+odd_2 <- exp(coef(glm2)) # the oods ratios 
+num2 <- nobs(glm2) # sample size
+pseudo_r2 <- 1 - (glm2$deviance / glm2$null.deviance) # pseudo-R^2
+aic2 <- AIC(glm2) # AIC value
+```
+
+3. the 3rd logistic regression with age, race, gender and poverty income ratio as predictors
+
+```{r}
+glm3 <- glm(VIQ220_BI ~ RIDAGEYR+RIDRETH1+RIAGENDR+INDFMPIR, data=merge_data, family = binomial)
+odd_3 <- exp(coef(glm3)) # the oods ratios 
+num3 <- nobs(glm3) # sample size
+pseudo_r3 <- 1 - (glm2$deviance / glm2$null.deviance) # pseudo-R^2
+aic3 <- AIC(glm3) # AIC value
+```
+
+4. a summary table of the three logistic models
+
+```{r}
+summary_table <- data.frame(
+  Model_1 = c(odd_1[2], NA, NA, NA, num1, pseudo_r1, aic1),
+  Model_2 = c(odd_2[2], odd_2[3], odd_2[4], NA, num2, pseudo_r2, aic2),
+  Model_3 = c(odd_3[2], odd_3[3], odd_3[4], odd_3[5], num3, pseudo_r3, aic3),
+  row.names = c("Odd_Ratio_Age", "Odd_Ratio_Race", "Odd_Ratio_Gender", "Odd_Ratio_PIR", "Sample_Size", "Pseudo_R2", "AIC")
+)
+
+stargazer(summary_table, type = "text", summary = FALSE, title = "Summary of the three Logistic Regression Models")
+```
+
+<b>P1-d.</b> From glm3, test and interpretation
+<br>&nbsp;&nbsp;&nbsp;1. Test whether the odds of men and women being wears of glasess/contact lenses for distance vision differs.
+<br>&nbsp;&nbsp;&nbsp;: <b>the p-value of t-test for the coefficient for the gender variable(RIAGENDR) is very small(p-value = 1.153700e-21). This means that the odds between men and women are significantly different.</b>
+
+```{r}
+summary(glm3)$coeff["RIAGENDR", ] # the test of the coefficient for RIAGENDR 
+```
+
+2. Test whether the proportion of wearers of glasses/contact lenses for distance vision differs between men and women.
+<br>: <b>the p-value of chi-squared test for the proportion between males and females is very small(p-value \< 2e-16). This means that the proportions between men and women are significantly different.</b>
+
+```{r}
+pp_table <- table(merge_data$RIAGENDR, merge_data$VIQ220_BI)
+pp_table[1,2]/sum(pp_table[1,]) # the proportion of male 
+pp_table[2,2]/sum(pp_table[2,]) # the proportion of female
+chi_test <- chisq.test(pp_table) # the chi-squared test for the proportion difference
+chi_test 
+```
+
+## Problem 2 - Sakila
+
+<b>P2-a.</b> the year of the oldest movie and the number of movies from that year <br>: <b>the year = 2006</b> and <b>the number of movies = 1,000</b>
+
+```{r}
+library(DBI)
+library(RSQLite)
+
+sakila <- dbConnect(SQLite(), "sakila_master.db")
+
+# This function is used to apply SQL to the Sakila database
+sakila_sql <- function(query) {
+   # this code is from the class notes for STATS 506
+  dbGetQuery(sakila, query)
+}
+
+# This is the query for the answer of this problem
+sakila_sql("
+SELECT COUNT(film_id), release_year
+  FROM film
+ GROUP BY release_year
+HAVING release_year = MIN(release_year)
+")
+```
+
+<b>P2-b.</b> the least common genre and the number of movies in that genre <br>: <b>the genre = Music</b> and <b>the number of movies = 51</b> <br><br> &nbsp;&nbsp;&nbsp;1. regular R operations
+
+```{r}
+category_data <- sakila_sql("
+                  SELECT category_id, name
+                    FROM category 
+                 ")
+film_data <- sakila_sql("
+              SELECT film_id, category_id
+                FROM film_category 
+              ")
+film_data <- merge(film_data, category_data, by = "category_id", all.x=TRUE)
+category_table <- table(film_data$name) # the category table of genre  
+min_index <- which.min(category_table) # index for the least common genre 
+category_table[min_index] # at least common genre and the number of the movies 
+```
+
+2. a single SQL query
+
+```{r}
+sakila_sql("
+SELECT c.name, COUNT(fc.film_id) AS count
+  FROM film_category AS fc
+  LEFT JOIN category AS c on fc.category_id = c.category_id
+ GROUP BY fc.category_id
+ ORDER BY count
+ LIMIT 1
+")
+```
+
+<b>P2-c.</b> Countries with exactly 13 customers <br>: <b>the countries are Argentina and Nigeria</b>
+<br><br>&nbsp;&nbsp;&nbsp;1. regular R operations
+
+```{r}
+# estract data from tables
+country_data <- sakila_sql("
+                 SELECT country_id, country
+                   FROM country
+                ")
+city_data <- sakila_sql("
+              SELECT city_id, country_id
+                FROM city
+             ")
+address_data <- sakila_sql("
+                 SELECT address_id, city_id
+                   FROM address
+                ")
+customer_data <- sakila_sql("
+                  SELECT customer_id, address_id
+                    FROM customer
+                 ")
+
+# data merger into one data frame "customer_data"
+customer_data <- merge(customer_data, address_data, by = "address_id", all.x = TRUE)
+customer_data <- merge(customer_data, city_data, by = "city_id", all.x = TRUE) 
+customer_data <- merge(customer_data, country_data, by = "country_id", all.x = TRUE)
+
+# coutries with exactly 13 customers
+country_table <- table(customer_data$country)
+index13 <- which(country_table==13)
+country_table[index13]
+```
+
+2. a single SQL query
+
+```{r}
+sakila_sql("
+SELECT acn.country, COUNT(cu.customer_id) AS customer
+  FROM customer as cu
+  LEFT JOIN (
+      SELECT a.address_id, cn.country
+        FROM address AS a
+        LEFT JOIN (
+            SELECT c.city_id, c.country_id, n.country
+              FROM city as c 
+              LEFT JOIN country AS n on c.country_id=n.country_id
+             ) AS cn on cn.city_id = a.city_id  
+        ) AS acn on acn.address_id = cu.address_id
+ GROUP BY country
+HAVING COUNT(cu.customer_id) = 13
+      ")
+```
+
+## Problem 3 - US Records
+
+<b>P3-a.</b> the proportion of email addresses with TLD “.com” <br>: <b>the proportion = 0.732</b>
+
+```{r}
+us500 <- read.csv("us-500.csv")
+email_us <- us500$email
+total <- length(email_us) # total number of email addresses
+com <- email_us[grepl("@.+\\.com",email_us)]
+sub <- length(com) # the number of email addresses with TLD ".com"
+sub/total # the proportion of email addresses with TLD “.com”
+```
+
+<b>P3-b.</b> the proportion of email addresses with at least one non alphanumeric character <br>: <b>the proportion = 0.506</b>
+
+```{r}
+non <- email_us[grepl("[^a-zA-Z0-9].*@.+\\..+",email_us)]
+sub2 <- length(non) # the number of email addresses with a non alphanumeric character
+sub2/total # the proportion of email addresses with a non alphanumeric character
+```
+
+<b>P3-c.</b> the top 5 most common area codes amongst all phone numbers <br>: <b>the top 5 area codes are 973, 212, 215, 410 and 201</b>
+
+```{r}
+phone1_us <- us500$phone1
+phone2_us <- us500$phone2
+area1 <- substr(phone1_us, 1, 3) # the area code from phone1
+area2 <- substr(phone2_us, 1, 3) # the area code from phone2
+area_table <- table(area1)
+area_sorted <- sort(area_table, decreasing = TRUE)
+names(head(area_sorted, 5)) # the 5 most common area codes amongt all phone numbers 
+```
+
+<b>P3-d.</b> a histogram of the log of the apartment numbers for all addresses
+
+```{r}
+address <- us500$address
+apt_num <- regmatches(address, regexpr("\\d+$", address)) # any number at the end of the an address 
+apt_num <- as.numeric(apt_num)
+log_num <- log(apt_num) # the log of the apartment numbers 
+hist(log_num, main = "the log of the apartment numbers", xlab = "log numbers")
+```
+
+<b>P3-e.</b> Examination whether the apartment numbers appear to follow Benford’s law <br>: <b>the chi-squared test p-value = 1.158e-08 <br> We can reject the hypothesis that the apartment numbers follow Benford’s law.</b>
+
+```{r}
+chr <- as.character(apt_num) 
+digit <- substr(chr,1,1) # the leading digit of the apartment numbers
+digit <- as.numeric(digit)
+count <- table(digit) # the number of the leading digit 
+ben_p <- log10(1+(1/1:9)) # the probability from Benford's law 
+chisq.test(count, p = ben_p) # test for compliance with Benford's law
+```
